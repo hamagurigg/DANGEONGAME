@@ -1,0 +1,870 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ダンジョンゲーム</title>
+    <style>
+        #maze {
+            width: 900px;
+            height: 600px;
+            touch-action: none;
+        }
+
+        #START {
+            position: absolute;
+            left: 200px;
+            top: 200px;
+        }
+
+
+
+        .hidden {
+            display: none;
+        }
+
+        body {
+            background-color: #000; /* 背景色を黒に設定 */
+            text-align: center;
+            font-family: 'Arial', sans-serif;
+        }
+
+        #menu {
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            width: 300px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #FFD700;
+            font-size: 48px;
+            text-shadow: 2px 2px 2px #333;
+        }
+
+        .menu-item {
+            margin: 10px;
+        }
+
+            .menu-item a {
+                text-decoration: none;
+                color: #FFF;
+                font-size: 24px;
+                display: block;
+                padding: 15px;
+                border: 2px solid #444;
+                border-radius: 5px;
+                transition: background-color 0.3s, transform 0.2s, color 0.2s, box-shadow 0.3s;
+            }
+
+                .menu-item a:hover {
+                    background-color: #FFD700;
+                    color: #111;
+                    transform: scale(1.05);
+                    box-shadow: 0 0 10px 5px #FFD700;
+                }
+
+        .return-button {
+            background-color: #FFD700;
+            color: #FFF;
+            font-size: 24px;
+            padding: 10px 20px;
+            border: 2px solid #444;
+            border-radius: 5px;
+            transition: background-color 0.3s, transform 0.2s, color 0.2s, box-shadow 0.3s;
+        }
+
+            .return-button:hover {
+                background-color: #FFA500;
+                color: #111;
+                transform: scale(1.1);
+                box-shadow: 0 0 10px 5px #FFD700;
+            }
+
+    </style>
+    <script>
+        "use strict";
+
+        let scroller = new Scroller(); // スクロール管理オブジェクト
+        Player.prototype = scroller; // scrollerをPlayerのprototypeに設定
+
+        const W = 31; // 迷路の幅
+        const H = 31; // 迷路の高さ
+        const GAMECLEAR = 1; // ゲームクリア状態
+        const maze = []; // 迷路
+        const player = new Player(1, 1); // 主人公
+
+        let ctx; // 描画用コンテキスト
+        let keyCode = 0; // 押下されたキー
+        let statuss = 0; // ゲームの状態
+        let timer = NaN; // タイマー
+
+        // スクロール処理オブジェクト
+        function Scroller() {
+            // 移動先(dx,dy)が設定された場合にスクロール
+            this.doScroll = function () {
+                if (this.dx == 0 && this.dy == 0) {
+                    return; // 移動先dx,dyが0のときは何もしない
+                }
+
+                if (++this.scrollCount >= 5) {
+                    this.x = this.x + this.dx; // x座標更新
+                    this.y = this.y + this.dy; // y座標更新
+                    this.dx = 0; // 移動先とカウンタをリセット
+                    this.dy = 0;
+                    this.scrollCount = 0;
+                }
+            };
+
+            // 現在のx座標を返す
+            this.getScrollX = function () {
+                return this.x * 50 + this.dx * this.scrollCount * 10; // 移動中スクロール量を含むx座標(50は50px,1マスが50pxだから)
+            };
+
+            // 現在のy座標を返す
+            this.getScrollY = function () {
+                return this.y * 50 + this.dy * this.scrollCount * 10; // 移動中スクロール量を含むy座標(scrollCountの10は動きの滑らかさ)
+            };
+        }
+
+        // ヒューリスティック関数
+        function heuristic(x, y) {
+            // ゴールまでのマンハッタン距離を計算
+            const dx = W - 2 - x;
+            const dy = H - 2 - y;
+            return Math.abs(dx) + Math.abs(dy);
+        }
+
+        // 主人公オブジェクトコンストラクタ
+        function Player(x, y) {
+            this.x = x;
+            this.y = y;
+            this.dx = 0;
+            this.dy = 0;
+            this.dir = 0;
+            this.scrollCount = 0;
+            this.exploredPositions = {}; // 探索済み位置を記録するオブジェクト
+            this.reward = 0; // 報酬を保持する変数
+
+            this.update = function () {
+                this.doScroll();
+                if (this.scrollCount > 0) {
+                    return;
+                }
+
+                if (this.x === W - 2 && this.y === H - 2) {
+                    clearInterval(timer);
+                    statuss = GAMECLEAR;
+                    document.getElementById("bgm").pause();
+                    repaint();
+                }
+
+                this.dx = 0;
+                this.dy = 0;
+
+                let bestAction = this.getBestAction(); // 最適な行動を取得
+
+                switch (bestAction) {
+                    case 0:
+                        this.dy = -1;
+                        this.dir = 0;
+                        break;
+                    case 1:
+                        this.dy = 1;
+                        this.dir = 1;
+                        break;
+                    case 2:
+                        this.dx = -1;
+                        this.dir = 2;
+                        break;
+                    case 3:
+                        this.dx = 1;
+                        this.dir = 3;
+                        break;
+                }
+
+                // 迷路の範囲外には移動できない
+                if (
+                    this.x + this.dx < 0 ||
+                    this.x + this.dx >= W ||
+                    this.y + this.dy < 0 ||
+                    this.y + this.dy >= H
+                ) {
+                    return;
+                }
+
+                if (maze[this.y + this.dy][this.x + this.dx] === 0) {
+                    this.x += this.dx;
+                    this.y += this.dy;
+
+                    const positionKey = `${this.x}-${this.y}`;
+                    if (!(positionKey in this.exploredPositions)) {
+                        this.exploredPositions[positionKey] = true;
+                        this.giveReward(10); // 新しい位置に到達した場合に報酬を与える
+                    }
+                }
+            };
+
+            this.doScroll = function () {
+                // スクロール処理
+                // ...
+            };
+
+            this.getBestAction = function () {
+                const numSimulations = 1000; // プレイアウト回数
+                const scores = [0, 0, 0, 0]; // 各行動のスコアを記録する配列
+                const explorationFactor = 0.5; // 探索度合いの調整係数
+
+                for (let i = 0; i < numSimulations; i++) {
+                    const actions = [0, 1, 2, 3]; // 行動の候補
+
+                    // ランダムな行動を選択
+                    const randomActionIndex = Math.floor(Math.random() * actions.length);
+                    const randomAction = actions[randomActionIndex];
+
+                    // 仮想的に行動を実行し、結果を評価する
+                    const result = this.simulateAction(randomAction);
+                    scores[randomAction] += result;
+                }
+
+                // スコアの最大値を持つ行動を最適な行動とする
+                const bestActionIndex = scores.indexOf(Math.max(...scores));
+                return bestActionIndex;
+            };
+
+            this.simulateAction = function (action) {
+                // 行動をシミュレートし、結果を評価するロジックを実装する
+                // 実際のシミュレーションや評価に合わせてカスタマイズしてください
+                // ここでは例としてランダムな報酬を返すだけの仮の実装を示します
+                const randomReward = Math.random() * 10;
+                return randomReward;
+            };
+
+            this.giveReward = function (reward) {
+                // 報酬を加算する
+                this.reward += reward;
+            };
+
+            this.paint = function (gc, x, y, w, h) {
+                // paint関数は主人公の画像を描画するための関数である
+                let img = document.getElementById("hero" + this.dir); // 向きに応じた画像の取得
+                gc.drawImage(img, x, y, w, h); // 主人公描画
+            };
+        }
+
+        function init() {　//ゲームの初期化を行う関数
+            let maze = document.getElementById("maze");
+            ctx = maze.getContext("2d"); // 描画コンテキスト　
+            ctx.font = "bold 48px sans-serif"; //ゲームオーバーなどの後で描画されるテキストがこのフォントスタイルで描画される
+
+            createMaze(W, H); // 迷路作成
+            repaint();
+        }
+
+        function go() {
+            window.onkeydown = mykeydown; //キーが押されたときにmykeydown関数が呼び出される
+            window.onkeyup = mykeyup;　//キーが離れたときにmykeydown関数が呼び出される
+
+            let maze = document.getElementById("maze"); // 迷路への参照を取得して各種イベントハンドラ登録
+            maze.onmousedown = mymousedown;
+            maze.onmouseup = mykeyup;
+            maze.oncontextmenu = function (e) {
+                e.preventDefault(); // コンテキストメニューを非表示に（タッチ対応）
+            };
+            maze.addEventListener("touchstart", mymousedown);　//touchstartが発生したときに右の関数が呼び起される
+            maze.addEventListener("touchend", mykeyup);
+
+            timer = setInterval(tick, 45);　//tick関数は定期的な処理を実行するために使用される。今回は45ミリ秒毎
+            document.getElementById("START").style.display = "none";
+            document.getElementById("bgm").play();
+        }
+
+        // メインルーチン
+        function tick() {　//ゲームの状態を更新するための重要な処理
+            player.update();
+            repaint();　//ゲーム画面の表示を更新
+        }
+
+        // 幅:w、高さ:hの迷路生成
+        function tick() {　//ゲームの状態を更新するための重要な処理
+            player.update();
+            repaint();　//ゲーム画面の表示を更新
+        }
+
+        // 棒倒し法：幅:w、高さ:hの迷路生成
+        function createMaze(w, h) {
+            for (let y = 0; y < h; y++) {
+                maze[y] = [];
+                for (let x = 0; x < w; x++) {
+                    // 周囲は壁(1)、それ以外は通路(0)で初期化
+                    maze[y][x] = x == 0 || x == w - 1 || y == 0 || y == h - 1 ? 1 : 0;
+                }
+            }
+
+            // ここから壁の配置
+            // 任意の場所に壁を設置するには、対応するセルの値を1に変更します
+            maze[1][2] = 1; // (2, 2)のセルに壁を設置
+            maze[1][4] = 1; // (4, 6)のセルに壁を設置
+            maze[1][12] = 1;
+            maze[1][24] = 1;
+            maze[2][2] = 1;
+            maze[2][4] = 1;
+            maze[2][6] = 1;
+            maze[2][7] = 1;
+            maze[2][8] = 1;
+            maze[2][10] = 1;
+            maze[2][12] = 1;
+            maze[2][14] = 1;
+            maze[2][15] = 1;
+            maze[2][16] = 1;
+            maze[2][17] = 1;
+            maze[2][18] = 1;
+            maze[2][20] = 1;
+            maze[2][22] = 1;
+            maze[2][24] = 1;
+            maze[2][26] = 1;
+            maze[2][27] = 1;
+            maze[2][28] = 1;
+            maze[3][8] = 1;
+            maze[3][10] = 1;
+            maze[3][20] = 1;
+            maze[3][22] = 1;
+            maze[3][26] = 1;
+            maze[4][1] = 1;
+            maze[4][2] = 1;
+            maze[4][3] = 1;
+            maze[4][4] = 1;
+            maze[4][6] = 1;
+            maze[4][7] = 1;
+            maze[4][8] = 1;
+            maze[4][10] = 1;
+            maze[4][11] = 1;
+            maze[4][12] = 1;
+            maze[4][13] = 1;
+            maze[4][14] = 1;
+            maze[4][15] = 1;
+            maze[4][16] = 1;
+            maze[4][17] = 1;
+            maze[4][18] = 1;
+            maze[4][20] = 1;
+            maze[4][22] = 1;
+            maze[4][23] = 1;
+            maze[4][24] = 1;
+            maze[4][25] = 1;
+            maze[4][26] = 1;
+            maze[4][28] = 1;
+            maze[4][29] = 1;
+            maze[5][8] = 1;
+            maze[5][16] = 1;
+            maze[5][24] = 1;
+            maze[6][2] = 1;
+            maze[6][3] = 1;
+            maze[6][4] = 1;
+            maze[6][5] = 1;
+            maze[6][6] = 1;
+            maze[6][7] = 1;
+            maze[6][8] = 1;
+            maze[6][10] = 1;
+            maze[6][11] = 1;
+            maze[6][12] = 1;
+            maze[6][14] = 1;
+            maze[6][16] = 1;
+            maze[6][17] = 1;
+            maze[6][18] = 1;
+            maze[6][20] = 1;
+            maze[6][22] = 1;
+            maze[6][23] = 1;
+            maze[6][24] = 1;
+            maze[6][25] = 1;
+            maze[6][26] = 1;
+            maze[6][28] = 1;
+            maze[6][29] = 1;
+            maze[7][6] = 1;
+            maze[7][14] = 1;
+            maze[7][20] = 1;
+            maze[7][26] = 1;
+            maze[8][2] = 1;
+            maze[8][3] = 1;
+            maze[8][4] = 1;
+            maze[8][5] = 1;
+            maze[8][6] = 1;
+            maze[8][8] = 1;
+            maze[8][9] = 1;
+            maze[8][10] = 1;
+            maze[8][12] = 1;
+            maze[8][14] = 1;
+            maze[8][16] = 1;
+            maze[8][18] = 1;
+            maze[8][20] = 1;
+            maze[8][21] = 1;
+            maze[8][22] = 1;
+            maze[8][23] = 1;
+            maze[8][24] = 1;
+            maze[8][25] = 1;
+            maze[8][26] = 1;
+            maze[8][27] = 1;
+            maze[8][28] = 1;
+            maze[9][6] = 1;
+            maze[9][10] = 1;
+            maze[9][12] = 1;
+            maze[9][14] = 1;
+            maze[9][16] = 1;
+            maze[9][18] = 1;
+            maze[10][2] = 1;
+            maze[10][3] = 1;
+            maze[10][4] = 1;
+            maze[10][5] = 1;
+            maze[10][6] = 1;
+            maze[10][8] = 1;
+            maze[10][10] = 1;
+            maze[10][11] = 1;
+            maze[10][12] = 1;
+            maze[10][14] = 1;
+            maze[10][15] = 1;
+            maze[10][16] = 1;
+            maze[10][17] = 1;
+            maze[10][18] = 1;
+            maze[10][20] = 1;
+            maze[10][22] = 1;
+            maze[10][24] = 1;
+            maze[10][25] = 1;
+            maze[10][26] = 1;
+            maze[10][27] = 1;
+            maze[10][28] = 1;
+            maze[11][2] = 1;
+            maze[11][8] = 1;
+            maze[11][10] = 1;
+            maze[11][18] = 1;
+            maze[11][20] = 1;
+            maze[11][22] = 1;
+            maze[12][1] = 1;
+            maze[12][2] = 1;
+            maze[12][4] = 1;
+            maze[12][5] = 1;
+            maze[12][6] = 1;
+            maze[12][8] = 1;
+            maze[12][9] = 1;
+            maze[12][10] = 1;
+            maze[12][12] = 1;
+            maze[12][13] = 1;
+            maze[12][14] = 1;
+            maze[12][16] = 1;
+            maze[12][17] = 1;
+            maze[12][18] = 1;
+            maze[12][19] = 1;
+            maze[12][20] = 1;
+            maze[12][21] = 1;
+            maze[12][22] = 1;
+            maze[12][23] = 1;
+            maze[12][24] = 1;
+            maze[12][26] = 1;
+            maze[12][27] = 1;
+            maze[12][28] = 1;
+            maze[13][6] = 1;
+            maze[13][8] = 1;
+            maze[13][14] = 1;
+            maze[13][18] = 1;
+            maze[14][2] = 1;
+            maze[14][4] = 1;
+            maze[14][5] = 1;
+            maze[14][6] = 1;
+            maze[14][7] = 1;
+            maze[14][8] = 1;
+            maze[14][9] = 1;
+            maze[14][10] = 1;
+            maze[14][11] = 1;
+            maze[14][12] = 1;
+            maze[14][14] = 1;
+            maze[14][15] = 1;
+            maze[14][16] = 1;
+            maze[14][18] = 1;
+            maze[14][20] = 1;
+            maze[14][21] = 1;
+            maze[14][22] = 1;
+            maze[14][24] = 1;
+            maze[14][26] = 1;
+            maze[14][28] = 1;
+            maze[14][29] = 1;
+            maze[15][2] = 1;
+            maze[15][16] = 1;
+            maze[15][18] = 1;
+            maze[15][20] = 1;
+            maze[15][24] = 1;
+            maze[15][26] = 1;
+            maze[16][1] = 1;
+            maze[16][2] = 1;
+            maze[16][4] = 1;
+            maze[16][5] = 1;
+            maze[16][6] = 1;
+            maze[16][8] = 1;
+            maze[16][10] = 1;
+            maze[16][11] = 1;
+            maze[16][12] = 1;
+            maze[16][14] = 1;
+            maze[16][15] = 1;
+            maze[16][16] = 1;
+            maze[16][17] = 1;
+            maze[16][18] = 1;
+            maze[16][20] = 1;
+            maze[16][21] = 1;
+            maze[16][22] = 1;
+            maze[16][24] = 1;
+            maze[16][25] = 1;
+            maze[16][26] = 1;
+            maze[16][27] = 1;
+            maze[16][28] = 1;
+            maze[16][29] = 1;
+            maze[17][6] = 1;
+            maze[17][8] = 1;
+            maze[17][14] = 1;
+            maze[17][22] = 1;
+            maze[18][2] = 1;
+            maze[18][3] = 1;
+            maze[18][4] = 1;
+            maze[18][6] = 1;
+            maze[18][7] = 1;
+            maze[18][8] = 1;
+            maze[18][10] = 1;
+            maze[18][11] = 1;
+            maze[18][12] = 1;
+            maze[18][14] = 1;
+            maze[18][15] = 1;
+            maze[18][16] = 1;
+            maze[18][17] = 1;
+            maze[18][18] = 1;
+            maze[18][19] = 1;
+            maze[18][20] = 1;
+            maze[18][22] = 1;
+            maze[18][24] = 1;
+            maze[18][25] = 1;
+            maze[18][26] = 1;
+            maze[18][28] = 1;
+            maze[19][8] = 1;
+            maze[19][12] = 1;
+            maze[19][24] = 1;
+            maze[19][28] = 1;
+            maze[20][1] = 1;
+            maze[20][2] = 1;
+            maze[20][4] = 1;
+            maze[20][6] = 1;
+            maze[20][7] = 1;
+            maze[20][8] = 1;
+            maze[20][10] = 1;
+            maze[20][12] = 1;
+            maze[20][13] = 1;
+            maze[20][14] = 1;
+            maze[20][15] = 1;
+            maze[20][16] = 1;
+            maze[20][18] = 1;
+            maze[20][20] = 1;
+            maze[20][21] = 1;
+            maze[20][22] = 1;
+            maze[20][23] = 1;
+            maze[20][24] = 1;
+            maze[20][26] = 1;
+            maze[20][27] = 1;
+            maze[20][28] = 1;
+            maze[21][4] = 1;
+            maze[21][6] = 1;
+            maze[21][10] = 1;
+            maze[21][18] = 1;
+            maze[21][28] = 1;
+            maze[22][1] = 1;
+            maze[22][2] = 1;
+            maze[22][4] = 1;
+            maze[22][5] = 1;
+            maze[22][6] = 1;
+            maze[22][7] = 1;
+            maze[22][8] = 1;
+            maze[22][10] = 1;
+            maze[22][12] = 1;
+            maze[22][14] = 1;
+            maze[22][15] = 1;
+            maze[22][16] = 1;
+            maze[22][17] = 1;
+            maze[22][18] = 1;
+            maze[22][19] = 1;
+            maze[22][20] = 1;
+            maze[22][22] = 1;
+            maze[22][24] = 1;
+            maze[22][25] = 1;
+            maze[22][26] = 1;
+            maze[22][28] = 1;
+            maze[23][8] = 1;
+            maze[23][10] = 1;
+            maze[23][12] = 1;
+            maze[23][18] = 1;
+            maze[23][22] = 1;
+            maze[23][26] = 1;
+            maze[23][28] = 1;
+            maze[24][2] = 1;
+            maze[24][3] = 1;
+            maze[24][4] = 1;
+            maze[24][5] = 1;
+            maze[24][6] = 1;
+            maze[24][8] = 1;
+            maze[24][9] = 1;
+            maze[24][10] = 1;
+            maze[24][11] = 1;
+            maze[24][12] = 1;
+            maze[24][13] = 1;
+            maze[24][14] = 1;
+            maze[24][16] = 1;
+            maze[24][18] = 1;
+            maze[24][19] = 1;
+            maze[24][20] = 1;
+            maze[24][22] = 1;
+            maze[24][24] = 1;
+            maze[24][25] = 1;
+            maze[24][26] = 1;
+            maze[24][27] = 1;
+            maze[24][28] = 1;
+            maze[25][4] = 1;
+            maze[25][8] = 1;
+            maze[25][16] = 1;
+            maze[25][20] = 1;
+            maze[25][22] = 1;
+            maze[25][24] = 1;
+            maze[26][2] = 1;
+            maze[26][4] = 1;
+            maze[26][5] = 1;
+            maze[26][6] = 1;
+            maze[26][7] = 1;
+            maze[26][8] = 1;
+            maze[26][10] = 1;
+            maze[26][11] = 1;
+            maze[26][12] = 1;
+            maze[26][13] = 1;
+            maze[26][14] = 1;
+            maze[26][15] = 1;
+            maze[26][16] = 1;
+            maze[26][18] = 1;
+            maze[26][19] = 1;
+            maze[26][20] = 1;
+            maze[26][21] = 1;
+            maze[26][22] = 1;
+            maze[26][23] = 1;
+            maze[26][24] = 1;
+            maze[26][26] = 1;
+            maze[26][27] = 1;
+            maze[26][28] = 1;
+            maze[26][29] = 1;
+            maze[27][2] = 1;
+            maze[27][4] = 1;
+            maze[27][24] = 1;
+            maze[28][2] = 1;
+            maze[28][3] = 1;
+            maze[28][4] = 1;
+            maze[28][6] = 1;
+            maze[28][7] = 1;
+            maze[28][8] = 1;
+            maze[28][10] = 1;
+            maze[28][11] = 1;
+            maze[28][12] = 1;
+            maze[28][13] = 1;
+            maze[28][14] = 1;
+            maze[28][16] = 1;
+            maze[28][17] = 1;
+            maze[28][18] = 1;
+            maze[28][19] = 1;
+            maze[28][20] = 1;
+            maze[28][21] = 1;
+            maze[28][22] = 1;
+            maze[28][24] = 1;
+            maze[28][26] = 1;
+            maze[28][27] = 1;
+            maze[28][28] = 1;
+            maze[29][8] = 1;
+
+            // 任意の場所にさらに壁を設置する場合は、同様に値を変更します
+
+
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        // x, yの場所に半径rの円を色colorで描画
+        function drawCircle(x, y, r, color) {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);　//円を描画するメソッド
+            ctx.fill();
+        }
+
+        // 描画
+        function repaint() {
+            // 背景クリア
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, 900, 600);　//ctx.fillRectは長方形を描画するメソッド。(x,y,w,h)
+
+            // クリップ領域設定
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(300, 300, 300, 0, Math.PI * 2);
+            ctx.clip();　//クリップ領域外に描画される部分が表示されなくなる
+
+            // 画面中央の迷路描画
+            ctx.fillStyle = "brown";
+            ctx.translate(6 * 50, 6 * 50);
+            ctx.translate(-1 * player.getScrollX(), -1 * player.getScrollY());
+            for (let x = 0; x < W; x++) {
+                for (let y = 0; y < H; y++) {
+                    if (maze[y][x] == 1) {
+                        ctx.fillRect(x * 50, y * 50, 50, 50); // 壁の画像描画
+                    }
+                }
+            }
+            ctx.restore();
+
+            // 画面右の地図描画
+            ctx.fillStyle = "#eeeeee";　//#eeeeeeは濃いグレー色
+            ctx.fillRect(650, 0, 250, 600);
+
+            ctx.save();
+            ctx.translate(670, 300);
+            ctx.fillStyle = "brown";
+            for (let x = 0; x < W; x++) {
+                for (let y = 0; y < H; y++) {
+                    if (maze[y][x] == 1) {
+                        ctx.fillRect(x * 7, y * 7, 7, 7);　//ctx.fillRectは短形を描画する
+                    }
+                }
+            }
+            drawCircle(player.x * 7 + 3, player.y * 7 + 3, 3, "red"); // 自分を赤で　drawCircleは先ほど定義した
+
+            ctx.restore();
+
+
+
+            // 主人公描画とメッセージ
+            player.paint(ctx, 300, 300, 50, 50);
+            ctx.fillStyle = "yellow";
+            if (statuss == GAMECLEAR) {
+                ctx.fillText("GAME CLEAR", 150, 200);
+            }
+        }
+
+        // キー＆マウス押下のイベントハンドラ
+        function mykeydown(e) {
+            keyCode = e.keyCode;
+        }
+        function mykeyup(e) {
+            keyCode = 0;
+        }
+        function mymousedown(e) {
+            let mouseX = !isNaN(e.offsetX) ? e.offsetX : e.touches[0].clientX;
+            let mouseY = !isNaN(e.offsetY) ? e.offsetY : e.touches[0].clientY;
+            if (670 < mouseX && mouseX < 870 && 70 < mouseY && mouseY < 270) {
+                mouseX -= 770;
+                mouseY -= 170;
+                if (Math.abs(mouseX) > Math.abs(mouseY)) {
+                    keyCode = mouseX < 0 ? 37 : 39;
+                } else {
+                    keyCode = mouseY < 0 ? 38 : 40;
+                }
+            }
+        }
+        //ゲーム画面に戻るボタン
+        function returnToMenu() {
+            if (statuss == GAMECLEAR) {
+                console.log("returnToMenu() called"); // デバッグ用メッセージ
+                // ゲームクリア時の処理
+                clearInterval(timer);
+                statuss = 0;
+                document.getElementById("bgm").pause();
+                player.x = 1;
+                player.y = 1;
+                repaint();
+                document.getElementById("gameClearMenu").style.display = "none"; // メニューボタンを非表示に
+                document.getElementById("mainMenu").style.display = "block"; // メインメニューを表示
+                document.getElementById("gameElements").style.display = "none"; // ゲーム要素を非表示
+
+                // スタートボタンを再表示
+                document.getElementById("gameStartButton").classList.remove("hidden");
+            }
+        }
+        function tick() {
+            player.update();
+            repaint();
+
+            // ゲームクリアの条件に達した場合、ボタンを表示
+            if (statuss == GAMECLEAR) {
+                document.getElementById("gameClearMenu").style.display = "block"; // メニューボタンを表示
+            }
+        }
+
+        function initMenu() {
+            // メニューの初期化ロジックを追加（必要であれば）
+            // 例: メニュー画面のタイトルやデザインの設定
+
+            // メニューの要素を表示
+            document.getElementById("mainMenu").style.display = "block";
+
+            // スタートボタンを表示状態に戻す
+            document.getElementById("gameStartButton").classList.remove("hidden");
+        }
+
+        function startGame() {
+            init();
+            document.getElementById("mainMenu").style.display = "none";
+            document.getElementById("gameElements").style.display = "block";
+            document.getElementById("gameClearMenu").style.display = "none"; // ゲームクリア時のメニューボタンを非表示
+            document.getElementById("gameStartButton").classList.add("hidden"); // スタートボタンを非表示に
+        }
+
+        function showOptions() {
+            // オプション画面を表示（実装が必要）
+            // 例: オプションダイアログを表示するロジック
+        }
+
+        //exit機能
+        function confirmExit() {
+            if (window.confirm("ゲームを終了しますか？")) {
+                window.close(); // ユーザーが確認した場合、タブが閉じられます
+            }
+        }
+
+    </script>
+</head>
+<body onload="initMenu()">
+    <!-- ページをロードしたらメニューを初期表示 -->
+    <!-- メインメニューの要素 -->
+    <div id="mainMenu">
+        <div id="menu">
+            <h1>AIダンジョンゲーム</h1>
+            <div class="menu-item">
+                <a href="#" onclick="startGame()">New Game</a> <!-- "New Game" ボタンをクリック時に startGame() 関数を呼び出す -->
+            </div>
+            
+            
+            <div class="menu-item">
+                <a href="javascript:void(0);" onclick="confirmExit()">Exit</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ゲーム要素などのコンテンツ -->
+    <div id="gameElements" style="display: none;">
+        <audio src="Emergency.mp3" id="bgm" loop="loop"></audio>
+        <canvas id="maze" width="900" height="600"></canvas>
+        <img id="START" src="start.png" onclick="go()"><br>
+        <img id="arrows" src="arrows.png" style="display: none">
+        <img id="hero0" src="hero0.png" style="display: none">
+        <img id="hero1" src="hero1.png" style="display: none">
+        <img id="hero2" src="hero2.png" style="display: none">
+        <img id="hero3" src="hero3.png" style="display: none">
+        <button id="gameStartButton" onclick="startGame()">START</button>
+        <!-- ゲームクリア時のメニューに戻るボタン -->
+        <div id="gameClearMenu">
+            <button onclick="returnToMenu()">Return to Menu</button>
+        </div>
+    </div>
+
+</body>
+
+</html>
