@@ -341,7 +341,20 @@ function Player3(x, y) {
     this.stepCount = 0; // ステップ数
     this.path = []; // 軌跡を保存する配列
 
-    this.update3 = function () {
+    // DQN関連のパラメータ
+    this.epsilon = 1.0; // ε-グリーディの初期値
+    this.epsilonDecay = 0.995; // εの減少率
+    this.epsilonMin = 0.01; // εの最小値
+    this.gamma = 0.95; // 割引率
+    this.learningRate = 0.001; // 学習率
+    this.memory = []; // 経験を保存するリプレイバッファ
+    this.batchSize = 32; // ミニバッチサイズ
+    this.targetUpdate = 100; // ターゲットモデルの更新頻度
+    this.model = this.buildModel(); // DQNモデル
+    this.targetModel = this.buildModel(); // ターゲットモデル
+    this.updateTargetModel(); // ターゲットモデルを初期化
+
+    this.update3 = async function () {
         this.doScroll();
         if (this.scrollCount > 0) {
             return;
@@ -358,15 +371,29 @@ function Player3(x, y) {
         this.dx = 0;
         this.dy = 0;
 
-        let bestAction3 = this.getBestAction3(); // 最適な行動を取得
+        let bestAction3 = await this.getBestAction3(); // 最適な行動を取得
         this.performAction3(bestAction3);
 
         // ここで報酬を計算し、ログ出力
-        let reward3 = performActionAndGetReward3(player3, bestAction3);
+        let reward3 = performActionAndGetReward3(this, bestAction3);
         console.log(`Action3: ${bestAction3}, Reward: ${reward3}`);
 
-
         this.stepCount++;
+
+        // εの減少
+        if (this.epsilon > this.epsilonMin) {
+            this.epsilon *= this.epsilonDecay;
+        }
+
+        // 経験をリプレイして学習
+        if (this.memory.length >= this.batchSize) {
+            await this.replay();
+        }
+
+        // ターゲットモデルの更新
+        if (this.stepCount % this.targetUpdate === 0) {
+            this.updateTargetModel();
+        }
 
         // ステータスを表示する関数を呼び出す
         displayStats3();
@@ -374,7 +401,7 @@ function Player3(x, y) {
 
     this.performAction3 = function (bestAction3) {
         // 移動前の状態を保存
-        const originalStateKey3 = `${this.x}-${this.y}`;
+        const originalState3 = { x: this.x, y: this.y };
 
         // 移動方向を設定し、有効な場合に位置を更新
         this.setMovementDirection(bestAction3);
@@ -384,13 +411,13 @@ function Player3(x, y) {
         }
 
         // 移動後の状態を取得
-        const newStateKey3 = `${this.x}-${this.y}`;
+        const newState3 = { x: this.x, y: this.y };
 
         // 報酬の計算
         let reward3 = performActionAndGetReward3(this, bestAction3);
 
-        // Q値の更新
-        updateQValue(originalStateKey3, bestAction3, reward3, newStateKey3);
+        // メモリに経験を保存
+        this.memory.push([originalState3, bestAction3, reward3, newState3]);
     };
 
     this.setMovementDirection = function (action3) {
@@ -431,40 +458,52 @@ function Player3(x, y) {
         );
     };
 
-    // 他のメソッド（doScroll, getBestAction, giveReward, paint）もここに記述
-    this.doScroll = function () {
-        // スクロール処理
-        // ...
-    };
-
-    this.getBestAction3 = function () {
-        const epsilon = 0.5; // εの値を設定。0.1なら10%の確率でランダムな行動を選択
-        const currentStateKey = `${this.x}-${this.y}`;
-        const currentQValues = QTable[currentStateKey];
-        let maxQValue = -Infinity;
-        let bestActions3 = [];
+    this.getBestAction3 = async function () {
+        const currentState = { x: this.x, y: this.y };
 
         // εの確率でランダムな行動を選択
-        if (Math.random() < epsilon) {
+        if (Math.random() < this.epsilon) {
             return Math.floor(Math.random() * 4);
         }
 
-        // 最大Q値を持つ行動を見つける
-        for (const action3 in currentQValues) {
-            const qValue = currentQValues[action3];
-            if (qValue > maxQValue) {
-                maxQValue = qValue;
-                bestActions3 = [parseInt(action3)];
-            } else if (qValue === maxQValue) {
-                bestActions3.push(parseInt(action3));
-            }
-        }
-
-        // 最大Q値を持つ行動が複数ある場合はその中からランダムに選択
-        const randomIndex = Math.floor(Math.random() * bestActions3.length);
-        return bestActions3[randomIndex];
+        // 現在の状態のQ値を取得
+        const qValues = await this.model.predict(tf.tensor2d([Object.values(currentState)])).data();
+        return qValues.indexOf(Math.max(...qValues));
     };
 
+    this.buildModel = function () {
+        const model = tf.sequential();
+        model.add(tf.layers.dense({ units: 24, inputShape: [2], activation: 'relu' }));
+        model.add(tf.layers.dense({ units: 24, activation: 'relu' }));
+        model.add(tf.layers.dense({ units: 4, activation: 'linear' }));
+        model.compile({ optimizer: tf.train.adam(this.learningRate), loss: 'mse' });
+        return model;
+    };
+
+    this.updateTargetModel = function () {
+        this.targetModel.setWeights(this.model.getWeights());
+    };
+
+    this.replay = async function () {
+        const minibatch = this.memory.slice(-this.batchSize);
+        for (let i = 0; i < minibatch.length; i++) {
+            const [state, action, reward, nextState] = minibatch[i];
+
+            // 現在のQ値
+            let qUpdate = reward;
+            if (!(nextState.x === W - 2 && nextState.y === H - 2)) {
+                const qValuesNext = await this.targetModel.predict(tf.tensor2d([Object.values(nextState)])).data();
+                qUpdate += this.gamma * Math.max(...qValuesNext);
+            }
+
+            // 更新後のQ値
+            const qValues = await this.model.predict(tf.tensor2d([Object.values(state)])).array();
+            qValues[0][action] = qUpdate;
+
+            // モデルの更新
+            await this.model.fit(tf.tensor2d([Object.values(state)]), tf.tensor2d([qValues[0]]), { epochs: 1, verbose: 0 });
+        }
+    };
 
     this.giveReward = function (reward3) {
         // 報酬を加算する
@@ -476,137 +515,6 @@ function Player3(x, y) {
         let img = document.getElementById("yusya" + this.dir); // 向きに応じた画像の取得
         gc.drawImage(img, x, y, w, h); // 主人公描画
     };
-}
-
-// 移動可能な方向の数を判定する関数
-function countMovableDirections(x, y) {
-    // ゴールの位置であれば行き止まりとしない
-    if (x === goalX && y === goalY) {
-        return 1; // ゴールには常に1つの「移動可能な方向」があると仮定
-    }
-
-    let count = 0;
-    if (maze[y - 1][x] === 0) count++; // 上
-    if (maze[y + 1][x] === 0) count++; // 下
-    if (maze[y][x - 1] === 0) count++; // 左
-    if (maze[y][x + 1] === 0) count++; // 右
-    return count;
-}
-
-// 行き止まりとして記録された位置を保持するオブジェクト
-const deadEnds = {};
-
-function isDeadEnd(x, y) {
-    // 位置が行き止まりとして記録されているかどうかを確認
-    return deadEnds[`${x}-${y}`] === true;
-}
-
-function performActionAndGetReward3(player3, action3) {
-
-    // 現在の状態を保存
-    const currentState3 = { x: player3.x, y: player3.y };
-
-    // 仮の次の状態を計算
-    const nextState3 = getNextState3(currentState3, action3);
-    let reward3 = 0;
-
-    // 移動可能な方向の数を判定し、行き止まりを記録
-    const movableDirections = countMovableDirections(currentState3.x, currentState3.y);
-    if (movableDirections === 1) {
-        deadEnds[`${currentState3.x}-${currentState3.y}`] = true;
-    }
-
-    if (!isNextStateValid(player3, nextState3)) {
-        reward3 += penaltyWall3;
-    }
-
-
-
-    // ゴールに近づいた場合の報酬
-    const distanceBefore = calculateDistance(currentState3.x, currentState3.y, goalX, goalY);
-    const distanceAfter = calculateDistance(nextState3.x, nextState3.y, goalX, goalY);
-    if (distanceAfter < distanceBefore) {
-        reward3 += rewardCloser3;
-    } else {
-        reward3 -= rewardCloser3 / 2; // ゴールに近づかなかった場合のマイナス報酬
-    }
-
-    // 新しい位置に到達した場合の報酬
-    const newPositionKey3 = `${nextState3.x}-${nextState3.y}`;
-    if (!(newPositionKey3 in player3.exploredPositions)) {
-        player3.exploredPositions[newPositionKey3] = true;
-        reward3 += rewardNewPosition3;
-    } else {
-        reward3 -= rewardNewPosition3; // 既に探索済みの位置に到達した場合のマイナス報酬
-    }
-
-    if (nextState3.x === goalX && nextState3.y === goalY) {
-        reward3 += rewardGoal3;
-    }
-
-    return reward3;
-}
-
-function isNextStateValid(player3, nextState3) {
-    return (
-        nextState3.x >= 0 &&
-        nextState3.x < W &&
-        nextState3.y >= 0 &&
-        nextState3.y < H &&
-        maze[nextState3.y][nextState3.x] === 0
-    );
-}
-
-function getNextState3(currentState3, action3) {
-    let { x, y } = currentState3;
-    switch (action3) {
-        case 0: y = Math.max(0, y - 1); break;
-        case 1: y = Math.min(H - 1, y + 1); break;
-        case 2: x = Math.max(0, x - 1); break;
-        case 3: x = Math.min(W - 1, x + 1); break;
-    }
-    return { x, y };
-}
-
-// Qテーブルの初期化
-const QTable = {};
-for (let x = 0; x < W; x++) {
-    for (let y = 0; y < H; y++) {
-        QTable[`${x}-${y}`] = { 0: 0, 1: 0, 2: 0, 3: 0 }; // 各状態に対して上下左右の行動のQ値を0で初期化
-    }
-}
-
-// 学習パラメータ
-
-
-// Q値の更新
-function updateQValue(state, action3, reward3, nextState3) {
-    const maxQNextState3 = Math.max(...Object.values(QTable[nextState3]));
-    const oldQValue = QTable[state][action3];
-    QTable[state][action3] = oldQValue + alpha3 * (reward3 + gamma3 * maxQNextState3 - oldQValue);
-
-    // ログ出力
-    console.log(`Updating Q value for state: ${state}, action3: ${action3}`);
-    console.log(`Old Q value: ${oldQValue}, Reward: ${reward3}, Max Q value of next state: ${maxQNextState3}`);
-    console.log(`New Q value: ${QTable[state][action3]}`);
-}
-
-let episodeCount = 0; // エピソード数を追跡する変数
-
-// 状態の更新
-function updateState3() {
-    if (player3.stepCount % 1500 === 0) { // 50ステップごとにエピソード数を更新
-        // エージェントを初期位置に戻す処理
-        player3.x = 1;
-        player3.y = 1;
-        player3.path = [];
-        player3.totalReward = 0;
-
-        // 探索済みの位置をリセットしない
-        // player.exploredPositions = {}; // この行を削除
-
-        episodeCount++;
-    }
 }
 
 function init1() {　//ゲーム1の初期化を行う関数
@@ -1531,4 +1439,3 @@ function showCode3() {
         codeContainer.style.display = "none";
     }
 }
-// JavaScript source code
