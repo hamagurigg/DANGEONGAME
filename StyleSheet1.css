@@ -1,3 +1,432 @@
-﻿body
-{
+#maze {
+    width: 900px;
+    height: 600px;
+    touch-action: none;
+}
+
+#image-container {
+    position: absolute;
+    width: 20px;
+    height: auto;
+    top: 300px;
+    right: 950px;
+    touch-action: none;
+}
+
+.explanation-container1 {
+    position: absolute;
+    top: 20px;
+    right: 610px;
+    width: 330px;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 10px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+.explanation-container2 {
+    position: absolute;
+    top: 20px;
+    right: 610px;
+    width: 330px;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 10px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+.explanation-container3 {
+    position: absolute;
+    top: 20px;
+    right: 610px;
+    width: 330px;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 10px;
+    border-radius: 5px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+#START1 {
+    position: absolute;
+    left: 200px;
+    top: 200px;
+}
+
+#START2 {
+    position: absolute;
+    left: 200px;
+    top: 200px;
+}
+
+#START3 {
+    position: absolute;
+    left: 200px;
+    top: 200px;
+}
+
+.hidden {
+    display: none;
+}
+
+#mainMenu {
+    background-color: #000;
+    /* 背景色を黒に設定 */
+    text-align: center;
+    font-family: 'Arial', sans-serif;
+    position: fixed;
+    /* または absolute */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+#menu {
+    background-color: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    border-radius: 10px;
+    width: 300px;
+    margin: 0 auto;
+}
+
+h1 {
+    color: #FFD700;
+    font-size: 48px;
+    text-shadow: 2px 2px 2px #333;
+}
+
+.menu-item {
+    margin: 10px;
+}
+
+.button-container {
+    display: inline-block;
+    position: relative;
+}
+
+.button {
+    text-decoration: none;
+    color: #FFF;
+    font-size: 24px;
+    padding: 15px;
+    border: 2px solid #444;
+    border-radius: 5px;
+    width: 280px;
+    /* ボタンの幅を設定 */
+    height: 50px;
+    /* ボタンの高さを設定 */
+    display: flex;
+    align-items: center;
+    /* テキストを垂直に中央揃え */
+    justify-content: center;
+    /* テキストを水平に中央揃え */
+    transition: background-color 0.3s, transform 0.2s, color 0.2s, box-shadow 0.3s;
+}
+
+.character-img {
+    width: 50px;
+    height: 50px;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: 100%;
+    /* ボタンの右端に配置 */
+    margin-left: 10px;
+    /* ボタンと画像の間にスペースを追加 */
+}
+
+.menu-item a {
+    text-decoration: none;
+    color: #FFF;
+    font-size: 24px;
+    display: block;
+    padding: 15px;
+    border: 2px solid #444;
+    border-radius: 5px;
+    transition: background-color 0.3s, transform 0.2s, color 0.2s, box-shadow 0.3s;
+}
+
+.menu-item a:hover {
+    background-color: #FFD700;
+    color: #111;
+    transform: scale(1.05);
+    box-shadow: 0 0 10px 5px #FFD700;
+}
+
+/* 画像をアニメーションさせるための設定 */
+.animated-img {
+    width: 50px;
+    height: 50px;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: 100%;
+    margin-left: 10px;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    pointer-events: none;
+    /* 画像がクリックイベントを受け取らないように設定 */
+    backface-visibility: hidden;
+    /* 裏面の表示を非表示にして滑らかに */
+}
+
+.exit-img {
+    width: 600px;
+    height: 600px;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    pointer-events: none;
+    backface-visibility: hidden;
+    /* 裏面の表示を非表示にして滑らかに */
+    /* 画像がクリックイベントを受け取らないように設定 */
+    transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+    /* フェードインとスケールのアニメーション */
+}
+
+.button:hover+.animated-img {
+    opacity: 1;
+}
+
+.button-container:hover .exit-img {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    /* 画像が拡大するように設定 */
+}
+
+.button:hover+#img1.animated-img {
+    animation: frame1 1s steps(4) infinite;
+}
+
+.button:hover+#img2.animated-img {
+    animation: frame2 1s steps(4) infinite;
+}
+
+.button:hover+#img3.animated-img {
+    animation: frame3 1s steps(4) infinite;
+}
+
+/* 各画像の設定 */
+#img1 {
+    background-image: url('alien1.png');
+}
+
+#img2 {
+    background-image: url('hero1.png');
+}
+
+#img3 {
+    background-image: url('yusya1.png');
+}
+
+#exit-img {
+    background-image: url('exit_image.png');
+}
+
+/* 画像のホバー時のアニメーションを無効化 */
+#img1:hover,
+#img2:hover,
+#img3:hover,
+#exit-img:hover {
+    animation: none !important;
+}
+
+@keyframes frame1 {
+    0% {
+        background-image: url('alien1.png');
+    }
+
+    25% {
+        background-image: url('alien2.png');
+    }
+
+    50% {
+        background-image: url('alien0.png');
+    }
+
+    75% {
+        background-image: url('alien3.png');
+    }
+
+    100% {
+        background-image: url('alien1.png');
+    }
+}
+
+@keyframes frame2 {
+    0% {
+        background-image: url('hero1.png');
+    }
+
+    25% {
+        background-image: url('hero2.png');
+    }
+
+    50% {
+        background-image: url('hero0.png');
+    }
+
+    75% {
+        background-image: url('hero3.png');
+    }
+
+    100% {
+        background-image: url('hero1.png');
+    }
+}
+
+@keyframes frame3 {
+    0% {
+        background-image: url('yusya1.png');
+    }
+
+    25% {
+        background-image: url('yusya2.png');
+    }
+
+    50% {
+        background-image: url('yusya0.png');
+    }
+
+    75% {
+        background-image: url('yusya3.png');
+    }
+
+    100% {
+        background-image: url('yusya1.png');
+    }
+}
+
+.return-button {
+    position: fixed;
+    /* fixed に変更して画面の固定位置に配置 */
+    top: 20px;
+    /* 画面の上から20px */
+    right: 20px;
+    /* 画面の右から20px */
+    font-size: 18px;
+    /* フォントサイズを18pxに設定 */
+    padding: 15px 25px;
+    /* 内側の余白を大きく設定 */
+    background-color: #007bff;
+    /* 背景色を設定 */
+    color: white;
+    /* 文字色を白に設定 */
+    border: none;
+    /* ボーダーを無しに設定 */
+    border-radius: 5px;
+    /* 角を丸くする */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    /* 影をつけて立体感を出す */
+    cursor: pointer;
+    /* カーソルをポインタに変更 */
+    z-index: 1000;
+    /* 他の要素よりも前に表示する */
+    transition: background-color 0.3s, color 0.3s, transform 0.3s, box-shadow 0.3s;
+    /* スムーズなトランジションを設定 */
+}
+
+.return-button:hover {
+    background-color: #FFA500;
+    /* ホバー時の背景色をオレンジに設定 */
+    color: #111;
+    /* ホバー時の文字色を濃い色に設定 */
+    transform: scale(1.1);
+    /* ホバー時にボタンを少し大きくする */
+    box-shadow: 0 0 10px 5px #FFD700;
+    /* ホバー時の影をゴールドに設定 */
+}
+
+.return-button:focus {
+    outline: none;
+    /* フォーカス時のアウトラインを無しに設定 */
+}
+
+#gameReturnMenu1,
+#gameReturnMenu2,
+#gameReturnMenu3 {
+    position: fixed;
+    /* 画面の固定位置に配置 */
+    top: 20px;
+    /* 上から20pxの位置に設定 */
+    right: 20px;
+    /* 右から20pxの位置に設定 */
+    width: auto;
+    /* 幅を自動で調整 */
+    height: auto;
+    /* 高さを自動で調整 */
+    z-index: 1000;
+    /* 他の要素よりも前に表示する */
+}
+
+#stats {
+    position: absolute;
+    top: 60px;
+    /* リターンボタンの下に位置するように調整 */
+    right: 0;
+    width: 300px;
+    height: auto;
+}
+
+#q-values {
+    position: absolute;
+    top: 10px;
+    /* リターンボタンの下に位置するように調整 */
+    right: 300px;
+    width: 300px;
+    height: auto;
+}
+
+/*エージェント１のUI*/
+#directionThreshold {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 300px;
+    /* 適切な幅 */
+    height: 100%;
+    /* コンテナの高さに合わせる */
+}
+
+#message1 {
+    background-color: rgba(255, 255, 255, 0.9);
+    /* 背景色を半透明に */
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/*エージェント２のUI*/
+#control-panel2 {
+    position: absolute;
+    right: 0;
+    top: 200px;
+    /* #statsの下に配置 */
+    width: 300px;
+    /* 適切な幅 */
+    height: auto;
+    /* 必要に応じて調整 */
+}
+
+/*エージェント3のUI*/
+#control-panel3 {
+    position: absolute;
+    right: 0;
+    top: 200px;
+    /* #statsの下に配置 */
+    width: 300px;
+    /* 適切な幅 */
+    height: auto;
+    /* 必要に応じて調整 */
 }
